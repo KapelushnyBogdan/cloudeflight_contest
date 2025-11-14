@@ -1,16 +1,75 @@
+"""
+Level 3: Bird Species Classification (Rule-Based)
+
+This module classifies bird species based on flight path patterns and environmental conditions.
+Uses rule-based decision logic to identify species from observed behavior patterns.
+
+Species Identified:
+    - Medieval Bluetit: Characterized by palindromic flight paths (>95%)
+    - Hurracurra Bird: High temperature zones (24-32°C), shared starting points
+    - Red Firefinch: Large flocks (6-12 birds), shared prefixes
+    - Sticky Wolfthroat: Short flight paths (~7 BOPs)
+    - Flanking Blackfinch: Moderate BOP counts (40±19)
+    - Rusty Goldhammer: High BOP counts (71±31)
+
+Usage:
+    python solve_level_3.py
+
+Input:
+    - CSV files in level_3/ directory with Flock ID, BOP Path, and Species columns
+    - all_data_from_level_1.in with temperature reference data
+    - level_3_species.in with known species patterns
+
+Output:
+    - Species predictions in corresponding .out files
+"""
+
 import pandas as pd
 from collections import defaultdict
 
+
 def correct_temperature(temp, threshold=42):
-    """Convert Fahrenheit to Celsius if temp > threshold"""
+    """
+    Convert Fahrenheit to Celsius if temperature exceeds threshold.
+    
+    Args:
+        temp (float): Temperature value
+        threshold (float): Threshold in Celsius (default: 42)
+        
+    Returns:
+        float: Temperature in Celsius
+    """
     return (temp - 32) * 5/9 if temp > threshold else temp
 
+
 def is_palindrome(path):
-    """Check if a path is palindromic"""
+    """
+    Check if a BOP path is palindromic (reads same forwards and backwards).
+    
+    Args:
+        path (list): List of BOP IDs representing a flight path
+        
+    Returns:
+        bool: True if path is palindromic, False otherwise
+    """
     return path == path[::-1]
 
+
 def analyze_flock(flock_data):
-    """Analyze patterns in a flock"""
+    """
+    Analyze behavioral patterns in a bird flock.
+    
+    Extracts features such as:
+    - Path patterns (palindromes, circular, shared prefixes)
+    - BOP diversity
+    - Path uniformity
+    
+    Args:
+        flock_data (list): List of BOP path strings for birds in the flock
+        
+    Returns:
+        dict: Dictionary containing pattern analysis results
+    """
     paths = [row.split() for row in flock_data]
 
     # Collect all BOPs visited
@@ -43,8 +102,23 @@ def analyze_flock(flock_data):
     }
 
 def classify_species(filename, df_temp):
-    """Classify bird species for a dataset"""
-
+    """
+    Classify bird species using rule-based decision logic.
+    
+    Uses environmental and behavioral patterns to identify species:
+    1. Medieval Bluetit: High palindrome ratio
+    2. Hurracurra Bird: High temperature zones
+    3. Red Firefinch: Large flock sizes
+    4. Sticky Wolfthroat: Short flight paths
+    5. Flanking Blackfinch vs Rusty Goldhammer: BOP count differences
+    
+    Args:
+        filename (str): Path to input CSV file with flock data
+        df_temp (pd.DataFrame): Temperature reference data
+        
+    Returns:
+        dict: Mapping of flock IDs to predicted species
+    """
     # Create BOP to temperature mapping
     bop_temp = dict(zip(df_temp['BOP'].astype(str), df_temp['Temp_Corrected']))
 

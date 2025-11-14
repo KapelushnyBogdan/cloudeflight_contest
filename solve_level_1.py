@@ -1,8 +1,43 @@
+"""
+Level 1: Bird Observation Point (BOP) Sorting
+
+This module sorts Bird Observation Points by their popularity based on environmental conditions.
+The sorting criteria prioritizes higher temperatures, lower humidity, and lower BOP IDs as tiebreakers.
+
+Handles both numeric and text-based number representations in the input data.
+
+Usage:
+    python solve_level_1.py
+
+Input:
+    CSV files in level_1/ directory with columns: BOP ID, Temperature, Humidity
+
+Output:
+    Space-separated sorted BOP IDs in corresponding .out files
+"""
+
 import csv
 import os
 
+
 def word_to_number(value):
-    """Convert word or numeric string to integer."""
+    """
+    Convert word or numeric string to integer.
+    
+    Args:
+        value (str): A numeric string (e.g., "42") or word (e.g., "forty-two")
+        
+    Returns:
+        int: The numeric value
+        
+    Examples:
+        >>> word_to_number("42")
+        42
+        >>> word_to_number("twenty-one")
+        21
+        >>> word_to_number("seventy")
+        70
+    """
     # Try to convert directly if it's already a number
     try:
         return int(value)
@@ -34,7 +69,21 @@ def word_to_number(value):
     return int(value)  # Fallback
 
 def solve_bop_sorting(input_file, output_file):
-    """Sort Bird Observation Points by popularity."""
+    """
+    Sort Bird Observation Points by popularity based on environmental conditions.
+    
+    Sorting priority:
+    1. Temperature (descending - higher is better)
+    2. Humidity (ascending - lower is better)
+    3. BOP ID (ascending - lower ID wins ties)
+    
+    Args:
+        input_file (str): Path to input CSV file with BOP data
+        output_file (str): Path to output file for sorted BOP IDs
+        
+    Returns:
+        str: Space-separated sorted BOP IDs
+    """
     bops = []
 
     # Read and parse the CSV file
@@ -64,14 +113,15 @@ def solve_bop_sorting(input_file, output_file):
 
     return result
 
-# Process all input files
-level_1_dir = 'level_1'
-input_files = [f for f in os.listdir(level_1_dir) if f.endswith('.in')]
-
-for input_file in sorted(input_files):
-    input_path = os.path.join(level_1_dir, input_file)
-    output_file = input_file.replace('.in', '.out')
-    output_path = os.path.join(level_1_dir, output_file)
-
-    result = solve_bop_sorting(input_path, output_path)
-    print(f"{input_file}: {result}")
+if __name__ == "__main__":
+    # Process all input files in the level_1 directory
+    level_1_dir = 'level_1'
+    input_files = [f for f in os.listdir(level_1_dir) if f.endswith('.in')]
+    
+    for input_file in sorted(input_files):
+        input_path = os.path.join(level_1_dir, input_file)
+        output_file = input_file.replace('.in', '.out')
+        output_path = os.path.join(level_1_dir, output_file)
+        
+        result = solve_bop_sorting(input_path, output_path)
+        print(f"{input_file}: {result}")
