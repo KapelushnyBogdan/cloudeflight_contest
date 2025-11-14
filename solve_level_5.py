@@ -1,3 +1,37 @@
+"""
+Level 5: Predict Top 50 BOPs by Bird Arrivals
+
+This module predicts the top 50 Bird Observation Points by arrivals for days 731-760
+using historical data from days 1-730. Employs gradient boosting regression with
+comprehensive feature engineering.
+
+Strategy:
+    1. Load 730 days of training data with known arrivals
+    2. Engineer features from occupancy, wind, insects, BOP ID, and day
+    3. Train Gradient Boosting Regressor to predict arrivals
+    4. For each prediction day (731-760):
+       - Predict arrivals for all 2500 BOPs
+       - Sort by predicted arrivals (descending)
+       - Select top 50 BOPs
+
+Features:
+    - Environmental: Occupancy, Wind (X, Y, magnitude, direction), Insects Delta
+    - Spatial: BOP ID (location-specific patterns)
+    - Temporal: Day number (seasonal patterns)
+    - Derived: Wind magnitude, wind direction angle
+
+Model: Gradient Boosting Regressor optimized for arrival prediction
+
+Usage:
+    python solve_level_5.py
+
+Input:
+    - level_5/level_5.in with BOP, Day, Occupancy, Wind, Insects, and Arrivals columns
+
+Output:
+    - level_5/level_5.out with top 50 BOPs per day for days 731-760
+"""
+
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor, ExtraTreesRegressor
@@ -6,22 +40,21 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore')
 
+
 def solve_level_5():
     """
-    Level 5: Predict top 50 BOPs by arrivals for days 731-760
+    Main function to predict top 50 BOPs by arrivals for days 731-760.
     
-    Strategy:
-    1. Load training data (days 1-730 with known arrivals)
-    2. Train a powerful ensemble model to predict arrivals based on:
-       - Occupancy
-       - Wind X, Wind Y (and derived features)
-       - Insects Delta
-       - BOP ID (as a feature for location-specific patterns)
-       - Day (for temporal patterns)
-    3. For each prediction day (731-760):
-       - Predict arrivals for all 2500 BOPs
-       - Sort by predicted arrivals (descending)
-       - Select top 50 BOPs
+    Implements a complete pipeline:
+    1. Data loading and preprocessing
+    2. Feature engineering (wind magnitude/direction, etc.)
+    3. Model training with Gradient Boosting
+    4. Prediction for all BOPs on days 731-760
+    5. Top-50 selection per day
+    6. Output generation
+    
+    Returns:
+        None: Writes predictions to level_5/level_5.out
     """
     
     print("="*70)

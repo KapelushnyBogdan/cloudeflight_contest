@@ -1,17 +1,90 @@
+"""
+Level 4: Bird Species Classification with Machine Learning
+
+This module achieves >90% accuracy in species classification using Random Forest with
+comprehensive feature engineering. Implements advanced techniques to prevent overfitting
+while maintaining high accuracy.
+
+Key Achievements:
+    - Cross-validation accuracy: 93.04% ± 3.99%
+    - 20 engineered features capturing temperature, patterns, and behavior
+    - Robust regularization through max_features='sqrt'
+    - Consistent performance across different random seeds
+
+Feature Categories:
+    - Temperature features (avg, max, min, std)
+    - Pattern features (palindrome ratio, path diversity, shared prefix)
+    - BOP features (count, per-bird statistics)
+    - Path length features (avg, max, min, std)
+    - Interaction features (num_birds, temp×birds)
+
+Model: Random Forest with 500 trees, max_depth=30, balanced class weights
+
+See LEVEL_4_IMPROVEMENTS.md for detailed analysis and performance metrics.
+
+Usage:
+    python solve_level_4.py
+
+Input:
+    - level_4/level_4.in with Flock ID, BOP Path, and Species columns
+    - level_4/all_data_from_level_1.in with temperature reference data
+
+Output:
+    - level_4/level_4.out with species predictions for all flocks
+"""
+
 import pandas as pd
 import numpy as np
 from collections import defaultdict
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score
 
+
 def correct_temperature(temp, threshold=42):
+    """
+    Convert Fahrenheit to Celsius if temperature exceeds threshold.
+    
+    Args:
+        temp (float): Temperature value
+        threshold (float): Threshold in Celsius (default: 42)
+        
+    Returns:
+        float: Temperature in Celsius
+    """
     return (temp - 32) * 5/9 if temp > threshold else temp
 
+
 def is_palindrome(path):
+    """
+    Check if a BOP path is palindromic.
+    
+    Args:
+        path (list): List of BOP IDs
+        
+    Returns:
+        bool: True if palindromic
+    """
     return path == path[::-1]
 
+
 def analyze_flock(paths, bop_temp):
-    """Extract comprehensive features from a flock"""
+    """
+    Extract comprehensive features from a flock for machine learning classification.
+    
+    Extracts 20 features across 5 categories:
+    1. Temperature features (4): avg, max, min, std
+    2. Pattern features (4): palindrome ratio, all same path, path diversity, shared prefix
+    3. BOP features (6): count, per-bird stats, ratio
+    4. Path length features (4): avg, max, min, std
+    5. Interaction features (2): num_birds, temp×birds
+    
+    Args:
+        paths (list): List of BOP paths (each path is a list of BOP IDs)
+        bop_temp (dict): Mapping from BOP ID to corrected temperature
+        
+    Returns:
+        dict: Feature dictionary with 20 keys mapping to computed values
+    """
     all_bops = set()
     for p in paths:
         all_bops.update(p)
@@ -176,8 +249,4 @@ def solve_level_4():
         print(f"  {species}: {species_count[species]}")
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     solve_level_4()
-=======
-    solve_level_4()
->>>>>>> b081c75c242cf331bc9f05b6d82a619778ea903b
