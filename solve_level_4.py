@@ -23,7 +23,6 @@ def analyze_flock(paths, bop_temp):
     palindrome_ratio = palindrome_count / len(paths) if paths else 0
 
     all_same_path = len(set(' '.join(p) for p in paths)) == 1
-    all_circular = all(p[0] == p[-1] for p in paths if len(p) > 1)
 
     # Shared prefix
     shared_prefix = 0
@@ -35,14 +34,13 @@ def analyze_flock(paths, bop_temp):
             else:
                 break
 
-    # Common start/end
-    starts = [p[0] for p in paths if len(p) > 0]
-    ends = [p[-1] for p in paths if len(p) > 0]
-    common_start_end = len(set(starts)) == 1 and len(set(ends)) == 1 and starts[0] == ends[0]
-
     # Number of unique BOPs per bird (for variation measure)
     bops_per_bird = [len(set(p)) for p in paths]
     avg_bops_per_bird = np.mean(bops_per_bird) if bops_per_bird else 0
+
+    # Path length
+    path_lengths = [len(p) for p in paths]
+    avg_path_length = np.mean(path_lengths) if path_lengths else 0
 
     return {
         'palindrome_ratio': palindrome_ratio,
@@ -51,67 +49,77 @@ def analyze_flock(paths, bop_temp):
         'avg_temp': avg_temp,
         'num_bops': len(all_bops),
         'num_birds': len(paths),
-        'common_start_end': common_start_end,
         'avg_bops_per_bird': avg_bops_per_bird,
+        'avg_path_length': avg_path_length,
         'bops': all_bops
     }
 
 def classify_species(analysis, all_bluetit_bops):
-    """Classify based on training data patterns"""
+    """Classify based on training data patterns
+    
+    Decision tree based on training data analysis:
+    1. avg_temp > 24.5 → Hurracurra Bird (catches birds with temp > 24.6)
+    2. palindrome_ratio > 0.5 AND avg_path_length >= 5 → Medieval Bluetit
+    3. avg_path_length < 12 → Sticky Wolfthroat or Red Firefinch
+       - Use num_birds >= 6 to distinguish (Red Firefinch min is 6)
+    4. num_birds >= 6 → Red Firefinch (for longer paths)
+    5. Remaining: Rusty Goldhammer vs Flanking Blackfinch
+       - Use decision tree rules
+    """
 
-    # Rule 1: Medieval Bluetit - Most have palindromes (95%)
-    if analysis['palindrome_ratio'] > 0.5:
-        return "Medieval Bluetit"
-
-    # Rule 2: Hurracurra Bird - HIGH temperature (27.53°C avg vs ~19°C)
-    if analysis['avg_temp'] > 24:
+    # Rule 1: Hurracurra Bird - VERY HIGH temperature
+    # With shared_prefix=1, Hurracurra has min temp 24.6
+    # Use 24.5 to capture all Hurracurra while avoiding most Red Firefinch
+    if analysis['avg_temp'] > 24.5:
         return "Hurracurra Bird"
 
-    # Rule 3: Sticky Wolfthroat - LOW temperature (16.55°C avg)
-    if analysis['avg_temp'] < 17.5:
-        return "Sticky Wolfthroat"
+    # Rule 2: Medieval Bluetit - HIGH palindrome ratio (47/49 = 95.9%)
+    # But exclude VERY SHORT paths (< 5) which are likely Sticky Wolfthroat
+    if analysis['palindrome_ratio'] > 0.5:
+        if analysis['avg_path_length'] < 5:
+            return "Sticky Wolfthroat"
+        else:
+            return "Medieval Bluetit"
 
-    # Check if subset of Bluetit (Wolfthroat behavior)
-    if all_bluetit_bops and analysis['bops'].issubset(all_bluetit_bops):
-        if len(analysis['bops']) < len(all_bluetit_bops) * 0.9:
+    # Rule 3: Distinguish between Sticky Wolfthroat and Red Firefinch
+    # For short paths (< 12):
+    # - Red Firefinch: num_birds >= 6 (min is 6, avg is 9.2)
+    # - Sticky Wolfthroat: num_birds < 6 (max is 6, avg is 4.4)
+    if analysis['avg_path_length'] < 12:
+        if analysis['num_birds'] >= 6:
+            return "Red Firefinch"
+        else:
             return "Sticky Wolfthroat"
 
-    # Rule 4: Red Firefinch - ALWAYS shared_prefix = 1, high num_birds (9.2 avg)
-    if analysis['shared_prefix'] == 1 and analysis['num_birds'] >= 6:
+    # Rule 4: Red Firefinch with longer paths but still high num_birds
+    # Some Red Firefinch have avg_path_length >= 12 but still high num_birds
+    if analysis['num_birds'] >= 6:
         return "Red Firefinch"
 
-    # Rule 5: Distinguish between Rusty Goldhammer, Flanking Blackfinch, and Red Firefinch
-    # Red Firefinch: shared_prefix = 1 (with fewer birds than above)
-    if analysis['shared_prefix'] == 1:
-        return "Red Firefinch"
-
-    # Rusty Goldhammer vs Flanking Blackfinch - both have shared_prefix 1-4 typically
-    # Need to use temperature and other features
-
-    # Rusty Goldhammer: tends to have slightly higher shared_prefix
-    # Flanking Blackfinch: shared_prefix distribution similar but maybe more varied
-
-    # Use temperature as tiebreaker: Flanking Blackfinch median is slightly different
-    # Also use number of birds: Rusty Goldhammer ~4.3, Flanking Blackfinch ~4.6
-
-    if analysis['shared_prefix'] >= 5:
-        return "Rusty Goldhammer"
-
-    # For shared_prefix 2-4: use temperature
-    # Rusty Goldhammer avg temp: 19.75°C
-    # Flanking Blackfinch avg temp: 19.50°C
-    # Red Firefinch avg temp: 19.63°C
-
-    # They're very close, so use num_birds and avg_bops_per_bird as additional signals
-    if analysis['shared_prefix'] >= 2:
-        # Higher unique BOPs per bird suggests more divergent paths (Rusty Goldhammer)
-        if analysis['avg_bops_per_bird'] > 12:
+    # Rule 5: Distinguish between Rusty Goldhammer and Flanking Blackfinch
+    # Using decision tree rules trained on the data (89.4% accuracy):
+    # Primary feature: num_bops (64% importance)
+    # Secondary features: avg_bops_per_bird, shared_prefix, num_birds, avg_path_length
+    
+    if analysis['num_bops'] <= 59:
+        if analysis['avg_bops_per_bird'] <= 19:
+            if analysis['num_bops'] <= 27.5:
+                return "Flanking Blackfinch"
+            else:
+                return "Rusty Goldhammer"
+        else:  # avg_bops_per_bird > 19
+            if analysis['shared_prefix'] <= 10.5:
+                return "Flanking Blackfinch"
+            else:
+                return "Rusty Goldhammer"
+    else:  # num_bops > 59
+        if analysis['avg_path_length'] <= 36:
             return "Rusty Goldhammer"
         else:
-            return "Flanking Blackfinch"
-
-    # Default
-    return "Red Firefinch"
+            if analysis['num_birds'] <= 3.5:
+                return "Rusty Goldhammer"
+            else:
+                return "Flanking Blackfinch"
 
 def solve_level_4():
     # Load temperature data
