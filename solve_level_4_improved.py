@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from collections import defaultdict
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
 from sklearn.model_selection import cross_val_score
 
 def correct_temperature(temp, threshold=42):
@@ -92,51 +92,27 @@ def analyze_flock(paths, bop_temp):
         'temp_times_birds': temp_times_birds
     }
 
-def train_classifier(X_train, y_train):
-    """Train optimized Random Forest classifier
-    
-    Achieves >93% cross-validation accuracy with regularization to prevent overfitting.
-    """
-    rf = RandomForestClassifier(
-        n_estimators=500,        # More trees for stability
-        max_depth=30,            # Allow deep trees but constrained
-        min_samples_split=2,     # Allow more splits
-        min_samples_leaf=1,      # Fine-grained splits
-        max_features='sqrt',     # Regularization: only sqrt(n) features per split
-        random_state=42,         # Reproducibility
-        class_weight='balanced'  # Handle class imbalance
-    )
-    
-    rf.fit(X_train, y_train)
-    
-    # Cross-validation to ensure no overfitting
-    cv_scores = cross_val_score(rf, X_train, y_train, cv=5, scoring='accuracy')
-    print(f"Cross-validation accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
-    print(f"CV scores: {cv_scores}")
-    
-    return rf
-
 def solve_level_4():
     # Load temperature data
     df_temp = pd.read_csv('level_4/all_data_from_level_1.in')
     df_temp.columns = ['BOP', 'Temp', 'Humidity']
     df_temp['Temp_Corrected'] = df_temp['Temp'].apply(correct_temperature)
     bop_temp = dict(zip(df_temp['BOP'].astype(str), df_temp['Temp_Corrected']))
-
+    
     # Read data
     df = pd.read_csv('level_4/level_4.in')
-
+    
     # Group by flock
     flocks = defaultdict(lambda: {'paths': [], 'species': None})
     for _, row in df.iterrows():
         flock_id = str(row['Flock ID'])
         path = row['BOP Path'].split()
         species = row['Species']
-
+        
         flocks[flock_id]['paths'].append(path)
         if species != 'missing':
             flocks[flock_id]['species'] = species
-
+    
     # Extract features for training
     X_train = []
     y_train = []
@@ -147,28 +123,79 @@ def solve_level_4():
             X_train.append(list(features.values()))
             y_train.append(data['species'])
     
-    # Train classifier
-    print("Training Random Forest classifier...")
-    classifier = train_classifier(X_train, y_train)
+    feature_names = list(analyze_flock(list(flocks.values())[0]['paths'], bop_temp).keys())
+    
+    # Create ensemble of classifiers
+    # Random Forest - good for non-linear patterns
+    rf = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=20,
+        min_samples_split=4,
+        min_samples_leaf=2,
+        max_features='sqrt',
+        random_state=42,
+        class_weight='balanced'
+    )
+    
+    # Gradient Boosting - good for sequential pattern learning
+    gb = GradientBoostingClassifier(
+        n_estimators=200,
+        max_depth=8,
+        learning_rate=0.05,
+        min_samples_split=5,
+        min_samples_leaf=2,
+        subsample=0.8,
+        random_state=42
+    )
+    
+    # Voting ensemble
+    ensemble = VotingClassifier(
+        estimators=[('rf', rf), ('gb', gb)],
+        voting='soft',
+        weights=[1.2, 1.0]  # Give slightly more weight to RF
+    )
+    
+    ensemble.fit(X_train, y_train)
+    
+    # Cross-validation score
+    cv_scores = cross_val_score(ensemble, X_train, y_train, cv=5, scoring='accuracy')
+    print(f"Ensemble cross-validation accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+    print(f"CV scores: {cv_scores}")
+    
+    # Individual model scores
+    rf.fit(X_train, y_train)
+    gb.fit(X_train, y_train)
+    
+    rf_scores = cross_val_score(rf, X_train, y_train, cv=5, scoring='accuracy')
+    gb_scores = cross_val_score(gb, X_train, y_train, cv=5, scoring='accuracy')
+    
+    print(f"\nRandom Forest CV: {rf_scores.mean():.4f} ± {rf_scores.std():.4f}")
+    print(f"Gradient Boosting CV: {gb_scores.mean():.4f} ± {gb_scores.std():.4f}")
+    
+    # Feature importance from RF
+    print("\nTop 10 Random Forest Feature Importances:")
+    importances = rf.feature_importances_
+    for name, imp in sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)[:10]:
+        print(f"  {name}: {imp:.4f}")
     
     # Classify missing species
     predictions = {}
-
+    
     for flock_id, data in flocks.items():
         if data['species'] == 'missing' or data['species'] is None:
             features = analyze_flock(data['paths'], bop_temp)
             X_test = [list(features.values())]
-            predicted_species = classifier.predict(X_test)[0]
+            predicted_species = ensemble.predict(X_test)[0]
             predictions[flock_id] = predicted_species
-
+    
     # Write output
     with open('level_4/level_4.out', 'w') as f:
         f.write("Flock ID,Species\n")
         for flock_id in sorted(predictions.keys(), key=int):
             f.write(f"{flock_id},{predictions[flock_id]}\n")
-
+    
     print(f"\nPredictions: {len(predictions)} flocks")
-
+    
     # Show distribution
     from collections import Counter
     species_count = Counter(predictions.values())
@@ -176,8 +203,4 @@ def solve_level_4():
         print(f"  {species}: {species_count[species]}")
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     solve_level_4()
-=======
-    solve_level_4()
->>>>>>> b081c75c242cf331bc9f05b6d82a619778ea903b
