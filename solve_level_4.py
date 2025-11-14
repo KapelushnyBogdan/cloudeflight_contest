@@ -69,9 +69,20 @@ def classify_species(analysis, all_bluetit_bops):
 
     # Rule 1: Hurracurra Bird - VERY HIGH temperature
     # With shared_prefix=1, Hurracurra has min temp 24.6
-    # Use 24.5 to capture all Hurracurra while avoiding most Red Firefinch
+    # But Red Firefinch can also have high temp (with high num_birds >= 6)
+    # Hurracurra Bird typically has num_birds < 6 (only 11/50 have 6 birds)
+    # Red Firefinch with high temp ALL have num_birds >= 6
     if analysis['avg_temp'] > 24.5:
-        return "Hurracurra Bird"
+        # If num_birds >= 6 AND shared_prefix == 1, more likely Red Firefinch
+        # since Red Firefinch ALWAYS has shared_prefix = 1
+        if analysis['num_birds'] >= 6 and analysis['shared_prefix'] == 1:
+            # But if num_birds < 7 AND avg_path_length >= 12, likely Hurracurra
+            if analysis['num_birds'] < 7 and analysis['avg_path_length'] >= 12:
+                return "Hurracurra Bird"
+            else:
+                return "Red Firefinch"
+        else:
+            return "Hurracurra Bird"
 
     # Rule 2: Medieval Bluetit - HIGH palindrome ratio (47/49 = 95.9%)
     # But exclude VERY SHORT paths (< 5) which are likely Sticky Wolfthroat
@@ -83,17 +94,19 @@ def classify_species(analysis, all_bluetit_bops):
 
     # Rule 3: Distinguish between Sticky Wolfthroat and Red Firefinch
     # For short paths (< 12):
-    # - Red Firefinch: num_birds >= 6 (min is 6, avg is 9.2)
-    # - Sticky Wolfthroat: num_birds < 6 (max is 6, avg is 4.4)
+    # - Red Firefinch: num_birds >= 7 OR (num_birds = 6 AND shared_prefix = 1)
+    # - Sticky Wolfthroat: otherwise
     if analysis['avg_path_length'] < 12:
-        if analysis['num_birds'] >= 6:
+        if analysis['num_birds'] >= 7:
+            return "Red Firefinch"
+        elif analysis['num_birds'] == 6 and analysis['shared_prefix'] == 1:
             return "Red Firefinch"
         else:
             return "Sticky Wolfthroat"
 
     # Rule 4: Red Firefinch with longer paths but still high num_birds
-    # Some Red Firefinch have avg_path_length >= 12 but still high num_birds
-    if analysis['num_birds'] >= 6:
+    # Some Red Firefinch have avg_path_length >= 12 but still high num_birds (>= 7)
+    if analysis['num_birds'] >= 7:
         return "Red Firefinch"
 
     # Rule 5: Distinguish between Rusty Goldhammer and Flanking Blackfinch
