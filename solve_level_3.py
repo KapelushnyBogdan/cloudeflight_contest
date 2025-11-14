@@ -170,9 +170,17 @@ def classify_flocks(flocks: Dict[int, List[List[int]]], temps: Dict[int, float])
         features['unique_paths'] = len(set(tuple(p) for p in paths))
         features['total_paths'] = len(paths)
         features['all_same'] = features['unique_paths'] == 1
+        features['all_unique'] = features['unique_paths'] == features['total_paths']
         
         # Feature 6: Average path length
         features['avg_length'] = sum(len(p) for p in paths) / len(paths)
+        
+        # Feature 7: Hot BOP percentage (temp > 25°C)
+        all_bops = set()
+        for p in paths:
+            all_bops.update(p)
+        hot_bops = {bop for bop in all_bops if temps.get(bop, 20) > 25}
+        features['hot_bop_pct'] = (len(hot_bops) / len(all_bops)) * 100 if all_bops else 0
         
         classifications[flock_id] = features
     
@@ -180,8 +188,8 @@ def classify_flocks(flocks: Dict[int, List[List[int]]], temps: Dict[int, float])
     assigned_species = {}
     used_species = set()
     
-    # Priority 1: Medieval Bluetit - palindrome (flies back same route)
-    # Choose the simplest/most consistent palindrome
+    # Priority 1: Medieval Bluetit - palindrome, shortest length
+    # (flies back same route, can't remember much)
     palindrome_flocks = [
         (fid, feat) for fid, feat in classifications.items()
         if feat['all_palindromes']
@@ -196,45 +204,55 @@ def classify_flocks(flocks: Dict[int, List[List[int]]], temps: Dict[int, float])
     else:
         bluetit_flock_id = None
     
-    # Priority 2: Sticky Wolfthroat - overlaps with Medieval Bluetit
+    # Priority 2: Sticky Wolfthroat - palindrome OR overlaps with Medieval Bluetit
     # (preys on bluetit, lies in wait along their routes)
-    if bluetit_flock_id is not None and "Sticky Wolfthroat" not in used_species:
+    if "Sticky Wolfthroat" not in used_species:
         remaining_flocks = [fid for fid in classifications.keys() if fid not in assigned_species]
-        if remaining_flocks:
-            # Find flock with highest overlap with bluetit
+        best_flock = None
+        
+        # Check for remaining palindromes first
+        remaining_palindromes = [fid for fid in remaining_flocks if classifications[fid]['all_palindromes']]
+        if remaining_palindromes:
+            best_flock = remaining_palindromes[0]
+        # Or check for overlap with bluetit
+        elif bluetit_flock_id is not None and remaining_flocks:
             bluetit_paths = flocks[bluetit_flock_id]
             best_overlap = 0
-            best_flock = None
-            
             for fid in remaining_flocks:
                 overlap = calculate_bop_overlap(bluetit_paths, flocks[fid])
                 if overlap > best_overlap:
                     best_overlap = overlap
                     best_flock = fid
-            
-            # Assign if overlap is significant (> 30%)
-            if best_flock and best_overlap > 0.3:
-                assigned_species[best_flock] = "Sticky Wolfthroat"
-                used_species.add("Sticky Wolfthroat")
+            # Only assign if overlap is significant (> 30%)
+            if best_overlap < 0.3:
+                best_flock = None
+        
+        if best_flock:
+            assigned_species[best_flock] = "Sticky Wolfthroat"
+            used_species.add("Sticky Wolfthroat")
     
-    # Priority 3: Hurracurra Bird - highest average temperature (hot regions)
+    # Priority 3: Hurracurra Bird - highest temperature or most hot BOP visits
+    # (eats worms in hot regions)
     remaining_flocks = [fid for fid in classifications.keys() if fid not in assigned_species]
     if remaining_flocks and "Hurracurra Bird" not in used_species:
-        hottest_flock = max(remaining_flocks, key=lambda fid: classifications[fid]['avg_temp'])
+        # Prefer highest hot BOP percentage
+        hottest_flock = max(remaining_flocks, 
+                          key=lambda fid: (classifications[fid]['hot_bop_pct'], 
+                                          classifications[fid]['avg_temp']))
         assigned_species[hottest_flock] = "Hurracurra Bird"
         used_species.add("Hurracurra Bird")
     
-    # Priority 4: Rusty Goldhammer - common prefix AND suffix, but NOT all same
-    # (journey together, split up for way back, reunite)
+    # Priority 4: Rusty Goldhammer - significant common prefix, all unique paths, long paths
+    # (journey together, split up for way back)
     remaining_flocks = [fid for fid in classifications.keys() if fid not in assigned_species]
     if remaining_flocks and "Rusty Goldhammer" not in used_species:
         best_flock = None
         best_score = 0
         for fid in remaining_flocks:
             feat = classifications[fid]
-            # Both prefix and suffix should be significant, but paths should be diverse (not all same)
-            if feat['common_prefix'] > 5 and feat['common_suffix'] > 0 and not feat['all_same']:
-                score = feat['common_prefix'] + feat['common_suffix']
+            # Significant prefix, all unique, relatively long paths
+            if feat['common_prefix'] > 5 and feat['all_unique'] and feat['avg_length'] > 15:
+                score = feat['common_prefix']
                 if score > best_score:
                     best_score = score
                     best_flock = fid
@@ -242,44 +260,34 @@ def classify_flocks(flocks: Dict[int, List[List[int]]], temps: Dict[int, float])
             assigned_species[best_flock] = "Rusty Goldhammer"
             used_species.add("Rusty Goldhammer")
     
-    # Priority 5: Red Firefinch - circular paths, high diversity
-    # (nest together in main area, go on different adventures)
+    # Priority 5: Red Firefinch - all unique short circular paths from same nest
+    # (nest together, go on own adventures)
     remaining_flocks = [fid for fid in classifications.keys() if fid not in assigned_species]
     if remaining_flocks and "Red Firefinch" not in used_species:
         best_flock = None
-        best_diversity = 0
         for fid in remaining_flocks:
             feat = classifications[fid]
-            # High diversity (many unique paths), all circular
-            if feat['all_circular'] and feat['unique_paths'] > 1:
-                diversity = feat['unique_paths'] / feat['total_paths']
-                if diversity > best_diversity:
-                    best_diversity = diversity
-                    best_flock = fid
+            # All unique, short paths, all circular
+            if feat['all_unique'] and feat['all_circular'] and feat['avg_length'] < 10:
+                best_flock = fid
+                break
         if best_flock:
             assigned_species[best_flock] = "Red Firefinch"
             used_species.add("Red Firefinch")
     
-    # Priority 6: Flanking Blackfinch - circular species that stay together
-    # (orbit a chosen land, stay together - all same path or very similar)
+    # Priority 6: Flanking Blackfinch - all same circular path
+    # (orbit chosen land, stay together)
     remaining_flocks = [fid for fid in classifications.keys() if fid not in assigned_species]
     if remaining_flocks and "Flanking Blackfinch" not in used_species:
-        # Prefer flock with all same paths (strongest "staying together" behavior)
+        # Prefer flock with all same paths
         best_flock = None
         for fid in remaining_flocks:
             feat = classifications[fid]
-            if feat['all_circular'] and feat['all_same']:
+            if feat['all_same'] and feat['all_circular']:
                 best_flock = fid
                 break
         
-        # If no all-same flock, take first remaining circular
-        if not best_flock:
-            for fid in remaining_flocks:
-                if classifications[fid]['all_circular']:
-                    best_flock = fid
-                    break
-        
-        # If still no match, just take first remaining
+        # If no match, take first remaining
         if not best_flock:
             best_flock = remaining_flocks[0]
         
