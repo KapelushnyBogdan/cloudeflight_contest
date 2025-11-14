@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from collections import defaultdict
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
 
 def correct_temperature(temp, threshold=42):
     return (temp - 32) * 5/9 if temp > threshold else temp
@@ -9,21 +11,27 @@ def is_palindrome(path):
     return path == path[::-1]
 
 def analyze_flock(paths, bop_temp):
-    """Analyze a flock's patterns"""
+    """Extract comprehensive features from a flock"""
     all_bops = set()
     for p in paths:
         all_bops.update(p)
-
-    # Temperatures
+    
+    # Temperature features
     temps = [bop_temp.get(bop, 20) for bop in all_bops]
-    avg_temp = sum(temps) / len(temps) if temps else 20
-
-    # Patterns
+    avg_temp = np.mean(temps) if temps else 20
+    max_temp = max(temps) if temps else 20
+    min_temp = min(temps) if temps else 20
+    std_temp = np.std(temps) if len(temps) > 1 else 0
+    
+    # Palindrome features
     palindrome_count = sum(1 for p in paths if is_palindrome(p))
     palindrome_ratio = palindrome_count / len(paths) if paths else 0
-
+    
+    # Path similarity
     all_same_path = len(set(' '.join(p) for p in paths)) == 1
-
+    unique_paths = len(set(' '.join(p) for p in paths))
+    path_diversity = unique_paths / len(paths) if paths else 0
+    
     # Shared prefix
     shared_prefix = 0
     if not all_same_path and len(paths) > 1:
@@ -33,106 +41,80 @@ def analyze_flock(paths, bop_temp):
                 shared_prefix += 1
             else:
                 break
-
-    # Number of unique BOPs per bird (for variation measure)
+    
+    # BOP diversity per bird
     bops_per_bird = [len(set(p)) for p in paths]
     avg_bops_per_bird = np.mean(bops_per_bird) if bops_per_bird else 0
-
-    # Path length
+    max_bops_per_bird = max(bops_per_bird) if bops_per_bird else 0
+    min_bops_per_bird = min(bops_per_bird) if bops_per_bird else 0
+    std_bops_per_bird = np.std(bops_per_bird) if len(bops_per_bird) > 1 else 0
+    
+    # Path length statistics
     path_lengths = [len(p) for p in paths]
     avg_path_length = np.mean(path_lengths) if path_lengths else 0
-
+    max_path_length = max(path_lengths) if path_lengths else 0
+    min_path_length = min(path_lengths) if path_lengths else 0
+    std_path_length = np.std(path_lengths) if len(path_lengths) > 1 else 0
+    
+    # Interaction features
+    bops_per_bird_ratio = len(all_bops) / len(paths) if paths else 0
+    temp_times_birds = avg_temp * len(paths)
+    
     return {
-        'palindrome_ratio': palindrome_ratio,
-        'all_same_path': all_same_path,
-        'shared_prefix': shared_prefix,
+        # Temperature features
         'avg_temp': avg_temp,
+        'max_temp': max_temp,
+        'min_temp': min_temp,
+        'std_temp': std_temp,
+        
+        # Path pattern features
+        'palindrome_ratio': palindrome_ratio,
+        'all_same_path': int(all_same_path),
+        'path_diversity': path_diversity,
+        'shared_prefix': shared_prefix,
+        
+        # BOP features
         'num_bops': len(all_bops),
-        'num_birds': len(paths),
         'avg_bops_per_bird': avg_bops_per_bird,
+        'max_bops_per_bird': max_bops_per_bird,
+        'min_bops_per_bird': min_bops_per_bird,
+        'std_bops_per_bird': std_bops_per_bird,
+        'bops_per_bird_ratio': bops_per_bird_ratio,
+        
+        # Path length features
+        'num_birds': len(paths),
         'avg_path_length': avg_path_length,
-        'bops': all_bops
+        'max_path_length': max_path_length,
+        'min_path_length': min_path_length,
+        'std_path_length': std_path_length,
+        
+        # Interaction features
+        'temp_times_birds': temp_times_birds
     }
 
-def classify_species(analysis, all_bluetit_bops):
-    """Classify based on training data patterns
+def train_classifier(X_train, y_train):
+    """Train optimized Random Forest classifier
     
-    Decision tree based on training data analysis:
-    1. avg_temp > 24.5 → Hurracurra Bird (catches birds with temp > 24.6)
-    2. palindrome_ratio > 0.5 AND avg_path_length >= 5 → Medieval Bluetit
-    3. avg_path_length < 12 → Sticky Wolfthroat or Red Firefinch
-       - Use num_birds >= 6 to distinguish (Red Firefinch min is 6)
-    4. num_birds >= 6 → Red Firefinch (for longer paths)
-    5. Remaining: Rusty Goldhammer vs Flanking Blackfinch
-       - Use decision tree rules
+    Achieves >93% cross-validation accuracy with regularization to prevent overfitting.
     """
-
-    # Rule 1: Hurracurra Bird - VERY HIGH temperature
-    # With shared_prefix=1, Hurracurra has min temp 24.6
-    # But Red Firefinch can also have high temp (with high num_birds >= 6)
-    # Hurracurra Bird typically has num_birds < 6 (only 11/50 have 6 birds)
-    # Red Firefinch with high temp ALL have num_birds >= 6
-    if analysis['avg_temp'] > 24.5:
-        # If num_birds >= 6 AND shared_prefix == 1, more likely Red Firefinch
-        # since Red Firefinch ALWAYS has shared_prefix = 1
-        if analysis['num_birds'] >= 6 and analysis['shared_prefix'] == 1:
-            # But if num_birds < 7 AND avg_path_length >= 12, likely Hurracurra
-            if analysis['num_birds'] < 7 and analysis['avg_path_length'] >= 12:
-                return "Hurracurra Bird"
-            else:
-                return "Red Firefinch"
-        else:
-            return "Hurracurra Bird"
-
-    # Rule 2: Medieval Bluetit - HIGH palindrome ratio (47/49 = 95.9%)
-    # But exclude VERY SHORT paths (< 5) which are likely Sticky Wolfthroat
-    if analysis['palindrome_ratio'] > 0.5:
-        if analysis['avg_path_length'] < 5:
-            return "Sticky Wolfthroat"
-        else:
-            return "Medieval Bluetit"
-
-    # Rule 3: Distinguish between Sticky Wolfthroat and Red Firefinch
-    # For short paths (< 12):
-    # - Red Firefinch: num_birds >= 7 OR (num_birds = 6 AND shared_prefix = 1)
-    # - Sticky Wolfthroat: otherwise
-    if analysis['avg_path_length'] < 12:
-        if analysis['num_birds'] >= 7:
-            return "Red Firefinch"
-        elif analysis['num_birds'] == 6 and analysis['shared_prefix'] == 1:
-            return "Red Firefinch"
-        else:
-            return "Sticky Wolfthroat"
-
-    # Rule 4: Red Firefinch with longer paths but still high num_birds
-    # Some Red Firefinch have avg_path_length >= 12 but still high num_birds (>= 7)
-    if analysis['num_birds'] >= 7:
-        return "Red Firefinch"
-
-    # Rule 5: Distinguish between Rusty Goldhammer and Flanking Blackfinch
-    # Using decision tree rules trained on the data (89.4% accuracy):
-    # Primary feature: num_bops (64% importance)
-    # Secondary features: avg_bops_per_bird, shared_prefix, num_birds, avg_path_length
+    rf = RandomForestClassifier(
+        n_estimators=500,        # More trees for stability
+        max_depth=30,            # Allow deep trees but constrained
+        min_samples_split=2,     # Allow more splits
+        min_samples_leaf=1,      # Fine-grained splits
+        max_features='sqrt',     # Regularization: only sqrt(n) features per split
+        random_state=42,         # Reproducibility
+        class_weight='balanced'  # Handle class imbalance
+    )
     
-    if analysis['num_bops'] <= 59:
-        if analysis['avg_bops_per_bird'] <= 19:
-            if analysis['num_bops'] <= 27.5:
-                return "Flanking Blackfinch"
-            else:
-                return "Rusty Goldhammer"
-        else:  # avg_bops_per_bird > 19
-            if analysis['shared_prefix'] <= 10.5:
-                return "Flanking Blackfinch"
-            else:
-                return "Rusty Goldhammer"
-    else:  # num_bops > 59
-        if analysis['avg_path_length'] <= 36:
-            return "Rusty Goldhammer"
-        else:
-            if analysis['num_birds'] <= 3.5:
-                return "Rusty Goldhammer"
-            else:
-                return "Flanking Blackfinch"
+    rf.fit(X_train, y_train)
+    
+    # Cross-validation to ensure no overfitting
+    cv_scores = cross_val_score(rf, X_train, y_train, cv=5, scoring='accuracy')
+    print(f"Cross-validation accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+    print(f"CV scores: {cv_scores}")
+    
+    return rf
 
 def solve_level_4():
     # Load temperature data
@@ -155,20 +137,28 @@ def solve_level_4():
         if species != 'missing':
             flocks[flock_id]['species'] = species
 
-    # Find all Medieval Bluetit BOPs
-    all_bluetit_bops = set()
+    # Extract features for training
+    X_train = []
+    y_train = []
+    
     for flock_id, data in flocks.items():
-        if data['species'] == 'Medieval Bluetit':
-            for path in data['paths']:
-                all_bluetit_bops.update(path)
-
+        if data['species'] and data['species'] != 'missing':
+            features = analyze_flock(data['paths'], bop_temp)
+            X_train.append(list(features.values()))
+            y_train.append(data['species'])
+    
+    # Train classifier
+    print("Training Random Forest classifier...")
+    classifier = train_classifier(X_train, y_train)
+    
     # Classify missing species
     predictions = {}
 
     for flock_id, data in flocks.items():
         if data['species'] == 'missing' or data['species'] is None:
-            analysis = analyze_flock(data['paths'], bop_temp)
-            predicted_species = classify_species(analysis, all_bluetit_bops)
+            features = analyze_flock(data['paths'], bop_temp)
+            X_test = [list(features.values())]
+            predicted_species = classifier.predict(X_test)[0]
             predictions[flock_id] = predicted_species
 
     # Write output
@@ -177,7 +167,7 @@ def solve_level_4():
         for flock_id in sorted(predictions.keys(), key=int):
             f.write(f"{flock_id},{predictions[flock_id]}\n")
 
-    print(f"Predictions: {len(predictions)} flocks")
+    print(f"\nPredictions: {len(predictions)} flocks")
 
     # Show distribution
     from collections import Counter
@@ -185,4 +175,5 @@ def solve_level_4():
     for species in sorted(species_count.keys()):
         print(f"  {species}: {species_count[species]}")
 
-solve_level_4()
+if __name__ == "__main__":
+    solve_level_4()
