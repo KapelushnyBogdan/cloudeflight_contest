@@ -1,0 +1,11 @@
+# Exclude all ZIP files
+*.zip
+
+# Exclude all .smth files (replace .smth with the exact extension if it's not .smth)
+*.smth
+
+# Exclude specific folders (examples; replace with your folder names)
+node_modules/
+build/
+dist/
+venv/
