@@ -4,8 +4,30 @@
 # Exclude all .smth files (replace .smth with the exact extension if it's not .smth)
 *.smth
 
-# Exclude specific folders (examples; replace with your folder names)
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
 node_modules/
 build/
 dist/
-venv/
+
+# OS specific
+.DS_Store
+Thumbs.db

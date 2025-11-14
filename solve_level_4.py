@@ -176,8 +176,4 @@ def solve_level_4():
         print(f"  {species}: {species_count[species]}")
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     solve_level_4()
-=======
-    solve_level_4()
->>>>>>> b081c75c242cf331bc9f05b6d82a619778ea903b
